@@ -118,7 +118,9 @@ function oauth:request(method, url, arg)
 	local tokenSecret = arg.oauth_token_secret or self.accessTokenSecret
 	if (arg and type(arg) == "table") then
 		for key, val in pairs(arg) do
-			params[key] = val
+			if (val ~= nil) then
+				params[key] = tostring(val)
+			end
 		end
 	end
 	params.oauth_token_secret = nil
