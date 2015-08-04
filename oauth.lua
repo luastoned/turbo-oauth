@@ -9,10 +9,10 @@ local oauth = {
 TURBO_SSL = true
 local turbo = require("turbo")
 
-local function request(method, url, request, headers)
+local function request(method, url, params, headers)
 	local options = {
 		method = method,
-		params = request,
+		params = params,
 		on_headers = function(self)
 			for k, v in pairs(headers or {}) do
 				self:add(k, v)
@@ -61,6 +61,7 @@ local function isParam(str)
 end
 
 -- Parameter encoding according to RFC3986
+-- http://tools.ietf.org/html/rfc3986#section-2.3
 -- http://oauth.net/core/1.0a/#encoding_parameters
 local function encodeParam(str)
 	return string.gsub(tostring(str), "[^-._~%w]", function(char)
@@ -83,13 +84,13 @@ function oauth:getRequestToken(callbackUrl)
 	}
 	
 	local res = self:request("POST", self.requestUrl, arg)
-	self.accessToken = decodeParam(res:match("oauth_token=([^&]+)"))
-	self.accessTokenSecret = decodeParam(res:match("oauth_token_secret=([^&]+)"))
+	self.requestToken = decodeParam(res:match("oauth_token=([^&]+)"))
+	self.requestTokenSecret = decodeParam(res:match("oauth_token_secret=([^&]+)"))
 	if (self.authorizeUrl) then
-		self.tokenUrl = self.authorizeUrl .. "?oauth_token=" .. encodeParam(self.accessToken)
+		self.tokenUrl = self.authorizeUrl .. "?oauth_token=" .. encodeParam(self.requestToken)
 	end
 	
-	return {res, self.accessToken, self.accessTokenSecret, self.tokenUrl}
+	return {res, self.requestToken, self.requestTokenSecret, self.tokenUrl}
 end
 
 function oauth:getAccessToken(verifier)
@@ -111,11 +112,11 @@ function oauth:request(method, url, arg)
 		oauth_timestamp = generateTimestamp(),
 		oauth_signature_method = "HMAC-SHA1",
 		oauth_consumer_key = self.consumerKey,
-		oauth_token = self.accessToken,
-		oauth_token_secret = self.accessTokenSecret,
+		oauth_token = self.accessToken or self.requestToken,
+		oauth_token_secret = self.accessTokenSecret or self.requestTokenSecret,
 	}
 	
-	local tokenSecret = arg.oauth_token_secret or self.accessTokenSecret
+	local tokenSecret = self.accessTokenSecret or self.requestTokenSecret
 	if (arg and type(arg) == "table") then
 		for key, val in pairs(arg) do
 			if (val ~= nil) then
@@ -125,11 +126,9 @@ function oauth:request(method, url, arg)
 	end
 	params.oauth_token_secret = nil
 
-	local signature = self:getSignature(method, url, params, tokenSecret)
-	local authHeader = self:getAuthorizationHeader(params, signature)
-
 	local headers = {}
-	headers["Authorization"] = authHeader
+	local signature = self:getSignature(method, url, params, tokenSecret)
+	headers["Authorization"] = self:getAuthorizationHeader(params, signature)
 	for key, val in pairs(self.headers or {}) do
 		headers[key] = val
 	end
